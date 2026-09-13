@@ -1,0 +1,8 @@
+Validate the extracted voter record against the image snippet.
+Check whether the name, relation name, age, and ID match the visual crop.
+Output JSON:
+{
+  "is_valid": <true or false>,
+  "corrections": {},
+  "confidence": <float 0.0 to 1.0>
+}

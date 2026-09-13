@@ -1,0 +1,28 @@
+You are an expert electoral document analyst.
+Extract page-level header electoral information from the provided header image and/or text.
+
+Extract the following fields in strict JSON format:
+{
+  "assembly_number": "...",
+  "assembly_name_hi": "...",
+  "assembly_name_en": "...",
+  "section_number": "...",
+  "section_name_hi": "...",
+  "section_name_en": "...",
+  "part_number": "...",
+  "booth_number": "...",
+  "booth_name_hi": "...",
+  "booth_name_en": "...",
+  "booth_address_hi": "...",
+  "booth_address_en": "...",
+  "page_number": <int>,
+  "confidence": <float 0.0 to 1.0>
+}
+
+RULES:
+1. Extract only visible information.
+2. Never guess or hallucinate.
+3. If an item is missing or unreadable, return null.
+4. Normalize Devanagari digits to standard digits (e.g., २१४ -> 214).
+5. Transliterate Hindi names to English phonetically.
+6. Return only valid JSON. No markdown ticks, no preamble.

@@ -1,0 +1,382 @@
+{
+  "info": {
+    "_postman_id": "8f3b20d7-a5ce-4952-b883-cf29b4e3a89e",
+    "name": "VoterLens API Collection",
+    "description": "Comprehensive Postman collection for VoterLens: Production-grade electoral PDF document extraction platform with PostgreSQL, OCR, and Gemini Flash LLM.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "Liveness Probe (GET /health)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifies that the FastAPI process is running."
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness Probe (GET /ready)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ready",
+              "host": ["{{base_url}}"],
+              "path": ["ready"]
+            },
+            "description": "Verifies that database connectivity is established and ready to serve traffic."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Upload PDF or ZIP (POST /api/v1/documents/upload)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.job_id) {",
+                  "    pm.environment.set('job_id', jsonData.job_id);",
+                  "}",
+                  "if (jsonData.documents && jsonData.documents.length > 0) {",
+                  "    pm.environment.set('document_id', jsonData.documents[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Upload a single electoral PDF or a ZIP archive containing multiple PDFs"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents", "upload"]
+            },
+            "description": "Upload a PDF or ZIP archive. Automatically extracts magic bytes, checks for zip bombs and path traversal, creates an extraction job, and triggers asynchronous background extraction."
+          },
+          "response": []
+        },
+        {
+          "name": "List Documents (GET /api/v1/documents)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents?skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents"],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "description": "Number of records to skip (offset)"
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Maximum records to return (page size)"
+                }
+              ]
+            },
+            "description": "Retrieve paginated list of all uploaded documents with metadata (SHA-256, status, total pages)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Document Metadata (GET /api/v1/documents/:document_id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents", "{{document_id}}"]
+            },
+            "description": "Get detailed metadata for a specific document by its UUID."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Document Pages & Hierarchy (GET /api/v1/documents/:document_id/pages)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents/{{document_id}}/pages",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents", "{{document_id}}", "pages"]
+            },
+            "description": "Retrieve all pages for a document with page-level electoral hierarchy metadata: Assembly Constituency, Section, Part, Booth, and Booth Address in both Hindi and English."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Document Records (GET /api/v1/documents/:document_id/records)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents/{{document_id}}/records?page_number=1&skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents", "{{document_id}}", "records"],
+              "query": [
+                {
+                  "key": "page_number",
+                  "value": "1",
+                  "description": "Filter by specific page number"
+                },
+                {
+                  "key": "validation_status",
+                  "value": "VALID",
+                  "description": "Filter by status: VALID, WARNING, REVIEW_REQUIRED, CORRECTED, FAILED",
+                  "disabled": true
+                },
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Retrieve extracted voter records belonging to a specific document."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Extraction Jobs",
+      "item": [
+        {
+          "name": "Get Job Status & Progress (GET /api/v1/jobs/:job_id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "{{job_id}}"]
+            },
+            "description": "Monitor the real-time status of an extraction job (QUEUED, PROCESSING, COMPLETED, FAILED) along with processed page and record counts."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Voter Records",
+      "item": [
+        {
+          "name": "Search & Filter Records (GET /api/v1/records)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.items && jsonData.items.length > 0) {",
+                  "    pm.environment.set('record_id', jsonData.items[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/records?assembly_number=214&gender=Male&min_age=18&max_age=65&skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "records"],
+              "query": [
+                {
+                  "key": "assembly_number",
+                  "value": "214",
+                  "description": "Filter by Assembly Constituency number"
+                },
+                {
+                  "key": "section_number",
+                  "value": "1",
+                  "description": "Filter by Section / Ward number",
+                  "disabled": true
+                },
+                {
+                  "key": "part_number",
+                  "value": "26",
+                  "description": "Filter by Part number",
+                  "disabled": true
+                },
+                {
+                  "key": "booth_number",
+                  "value": "001",
+                  "description": "Filter by Polling Station / Booth number",
+                  "disabled": true
+                },
+                {
+                  "key": "gender",
+                  "value": "Male",
+                  "description": "Filter by gender: Male / Female / Other"
+                },
+                {
+                  "key": "min_age",
+                  "value": "18",
+                  "description": "Minimum voter age"
+                },
+                {
+                  "key": "max_age",
+                  "value": "65",
+                  "description": "Maximum voter age"
+                },
+                {
+                  "key": "house_number",
+                  "value": "15/102",
+                  "description": "Filter by House number string",
+                  "disabled": true
+                },
+                {
+                  "key": "id_number",
+                  "value": "WGX",
+                  "description": "Filter by Voter ID (EPIC / SVN) substring",
+                  "disabled": true
+                },
+                {
+                  "key": "validation_status",
+                  "value": "VALID",
+                  "description": "Filter by VALID, WARNING, REVIEW_REQUIRED, CORRECTED, FAILED",
+                  "disabled": true
+                },
+                {
+                  "key": "min_confidence",
+                  "value": "0.85",
+                  "description": "Filter by minimum confidence score",
+                  "disabled": true
+                },
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Search and filter voter records across electoral hierarchy criteria (Assembly, Section, Part, Booth, Gender, Age, House Number, Voter ID, Status)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Review-Required Queue (GET /api/v1/records/review-required)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/records/review-required?skip=0&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "records", "review-required"],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Retrieve the human review queue containing low-confidence or ambiguous voter records that require manual verification."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Record by ID (GET /api/v1/records/:record_id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/records/{{record_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "records", "{{record_id}}"]
+            },
+            "description": "Get single voter record with nested location, voter details, confidence, and source page bounding box."
+          },
+          "response": []
+        },
+        {
+          "name": "Update / Correct Record (PATCH /api/v1/records/:record_id)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name_hi\": \"सुरेश कुमार\",\n  \"name_en\": \"Suresh Kumar\",\n  \"house_number\": \"1\",\n  \"relation_type\": \"father\",\n  \"relation_name_hi\": \"महादेव\",\n  \"relation_name_en\": \"Mahadev\",\n  \"id_number\": \"SNPMAA005\",\n  \"gender_hi\": \"पु\",\n  \"gender_en\": \"Male\",\n  \"age\": 45,\n  \"validation_status\": \"CORRECTED\",\n  \"reviewer_notes\": \"Verified against page scan crop; name corrected.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/records/{{record_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "records", "{{record_id}}"]
+            },
+            "description": "Apply manual human corrections to an extracted voter record. Automatically creates an audit history entry in correction_history with previous values and reviewer notes."
+          },
+          "response": []
+        },
+        {
+          "name": "Re-Validate Record (POST /api/v1/records/:record_id/validate)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/records/{{record_id}}/validate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "records", "{{record_id}}", "validate"]
+            },
+            "description": "Re-evaluate an existing record against deterministic validation rules (age range 18-130, voter name presence, ID format)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
