@@ -41,13 +41,13 @@ class Settings(BaseSettings):
     LLM_BATCH_SIZE: int = 5
     VISION_BATCH_SIZE: int = 5
     ENABLE_GEMINI_VISION: bool = True
-    LLM_MAX_RETRIES: int = 2
+    LLM_MAX_RETRIES: int = 3
     CASCADE_CONFIDENCE_THRESHOLD: float = 0.82
 
     # OCR Settings
     OCR_LANGUAGES: str = "hi,en"
     OCR_GPU: bool = False
-    OCR_DPI: int = 150
+    OCR_DPI: int = 200  # Increased from 150 for better LLM/OCR quality
 
     # Uploads & Security
     UPLOAD_DIR: str = "./uploads"

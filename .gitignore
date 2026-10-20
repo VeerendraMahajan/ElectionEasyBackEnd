@@ -28,6 +28,8 @@ htmlcov/
 uploads/*
 !uploads/.gitkeep
 scratch/*
+reports/*
+!reports/.gitkeep
 .idea/
 .vscode/
 *.swp

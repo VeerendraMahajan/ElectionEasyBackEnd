@@ -32,6 +32,10 @@ class ExtractionService:
         self.page_repo = PageRepository(session)
         self.record_repo = RecordRepository(session)
 
+        # Import LLM service for assembly page extraction
+        from app.services.llm_service import LLMService
+        self.llm_service = LLMService()
+
     async def process_document_pages(
         self,
         document_id: uuid.UUID,
@@ -84,7 +88,53 @@ class ExtractionService:
                             header_bbox=[0, 0, int(page_img.shape[1]), int(page_img.shape[0] * 0.16)]
                         )
 
-                        # 3. Route to Extractor
+                        # 3. Detect assembly summary page (e.g. demo_1_latest.pdf page 1)
+                        if self.page_analysis.is_assembly_summary_page(page, layout_info):
+                            logger.info(
+                                f"Page {page_num}: Assembly summary/cover page detected — "
+                                "extracting metadata via LLM (no voter records on this page)."
+                            )
+                            # Extract assembly metadata and store it in the page header
+                            assembly_data = self.llm_service.extract_assembly_page(
+                                page_img, page_num
+                            )
+                            if assembly_data:
+                                # Build a PageHeaderExtraction from the assembly data
+                                from app.schemas.page import PageHeaderExtraction
+                                enriched_header = PageHeaderExtraction(
+                                    assembly_number=assembly_data.get("assembly_number") or header_data.assembly_number,
+                                    assembly_name_hi=assembly_data.get("assembly_name_hi") or header_data.assembly_name_hi,
+                                    assembly_name_en=None,
+                                    section_number=None,
+                                    section_name_hi=None,
+                                    section_name_en=None,
+                                    part_number=assembly_data.get("part_number") or header_data.part_number,
+                                    booth_number=assembly_data.get("booth_number"),
+                                    booth_name_hi=assembly_data.get("booth_name_hi"),
+                                    booth_name_en=None,
+                                    booth_address_hi=assembly_data.get("booth_address_hi"),
+                                    booth_address_en=None,
+                                    page_number=page_num,
+                                    confidence=0.97,
+                                )
+                                await self.page_repo.update_header(
+                                    page_id=db_page.id,
+                                    header=enriched_header,
+                                    raw_header_text=str(assembly_data),
+                                    header_bbox=[0, 0, int(page_img.shape[1]), int(page_img.shape[0])]
+                                )
+                                # Propagate to header_service cache for subsequent voter pages
+                                self.page_analysis.header_service.last_valid_header = enriched_header
+
+                            await self.page_repo.update_status(
+                                db_page.id, "COMPLETED", method="ASSEMBLY_PAGE"
+                            )
+                            pages_processed += 1
+                            if progress_callback:
+                                await progress_callback(pages_delta=1, records_delta=0, failed_delta=0)
+                            continue  # No voter records to extract from this page
+
+                        # 4. Route to appropriate voter extractor
                         extractor: BaseExtractor
                         if layout_type == "CARD_FORMAT":
                             extractor = self.card_extractor
@@ -100,7 +150,8 @@ class ExtractionService:
                         voters_dicts = DuplicateService.identify_duplicates_in_batch(voters_dicts)
                         final_voters = [VoterExtraction(**vd) for vd in voters_dicts]
 
-                        # 5. Persist Voter Records & Field Results
+                        # 5. Persist Voter Records & Field Results (clean previous records for page first)
+                        await self.record_repo.delete_by_page_id(db_page.id)
                         if final_voters:
                             await self.record_repo.create_batch(
                                 document_id=document_id,

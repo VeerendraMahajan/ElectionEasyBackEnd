@@ -19,7 +19,7 @@ class OCRService:
         langs = settings.ocr_languages_list
         logger.info(f"Initializing OCR Service with languages: {langs}, GPU={settings.OCR_GPU}")
         try:
-            self.reader = easyocr.Reader(langs, gpu=settings.OCR_GPU)
+            self.reader = easyocr.Reader(langs, gpu=settings.OCR_GPU, verbose=False)
         except Exception as e:
             logger.error(f"Failed to initialize EasyOCR: {e}")
             raise OCRError(f"Failed to initialize OCR engine: {str(e)}")

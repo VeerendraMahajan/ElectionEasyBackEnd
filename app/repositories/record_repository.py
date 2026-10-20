@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple, Dict, Any
-from sqlalchemy import select, func, update, and_
+from sqlalchemy import select, func, update, delete, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.person_record import PersonRecord
@@ -82,6 +82,17 @@ class RecordRepository:
 
         await self.session.flush()
         return records
+
+    async def delete_by_page_id(self, page_id: uuid.UUID) -> None:
+        stmt = delete(PersonRecord).where(PersonRecord.page_id == page_id)
+        await self.session.execute(stmt)
+        await self.session.flush()
+
+    async def delete_by_document_id(self, document_id: uuid.UUID) -> None:
+        stmt = delete(PersonRecord).where(PersonRecord.document_id == document_id)
+        await self.session.execute(stmt)
+        await self.session.flush()
+
 
     async def search(
         self,

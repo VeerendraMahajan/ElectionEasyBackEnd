@@ -141,12 +141,24 @@ class HeaderExtractionService:
         page_number: int,
         header_crop: Optional[np.ndarray] = None
     ) -> PageHeaderExtraction:
-        """Extract header deterministically, inheriting document hierarchy across pages to avoid LLM quota exhaustion."""
+        """
+        Extract header with the following priority strategy:
+        1. Deterministic regex from OCR/digital text (fast, free).
+        2. If assembly+part found deterministically, cache and return.
+        3. If prior header cached (same document), inherit assembly/part.
+           Then try LLM on the crop to update section/booth changes per page.
+        4. First page with no cached context — LLM Vision required.
+        """
         header = self.extract_header_from_text(header_text, page_number)
 
-        # Inherit document hierarchy if already extracted on earlier pages
-        if (not header.assembly_number or not header.part_number) and self.last_valid_header:
-            logger.info(f"Page {page_number} inheriting header hierarchy from previous page in document")
+        # Fast path: fully resolved deterministically
+        if header.assembly_number and header.part_number:
+            self.last_valid_header = header
+            return header
+
+        # --- Inherit document hierarchy from cached previous page ---
+        if self.last_valid_header:
+            logger.info(f"Page {page_number}: Inheriting header hierarchy from previous page.")
             header.assembly_number = header.assembly_number or self.last_valid_header.assembly_number
             header.assembly_name_hi = header.assembly_name_hi or self.last_valid_header.assembly_name_hi
             header.assembly_name_en = header.assembly_name_en or self.last_valid_header.assembly_name_en
@@ -160,20 +172,40 @@ class HeaderExtractionService:
             header.booth_address_hi = header.booth_address_hi or self.last_valid_header.booth_address_hi
             header.booth_address_en = header.booth_address_en or self.last_valid_header.booth_address_en
             header.confidence = max(header.confidence, 0.90)
+
+            # Try LLM to pick up per-page section/booth changes (different section per voter page)
+            if header_crop is not None and self.llm_service.is_available:
+                try:
+                    llm_header = self.llm_service.extract_header(header_crop, header_text, page_number)
+                    if llm_header:
+                        if llm_header.section_number:
+                            header.section_number = llm_header.section_number
+                            header.section_name_hi = llm_header.section_name_hi or header.section_name_hi
+                            header.section_name_en = llm_header.section_name_en or header.section_name_en
+                        if llm_header.booth_number:
+                            header.booth_number = llm_header.booth_number
+                            header.booth_name_hi = llm_header.booth_name_hi or header.booth_name_hi
+                        header.confidence = max(header.confidence, llm_header.confidence)
+                except Exception as e:
+                    logger.debug(f"LLM section-update on page {page_number} failed: {e}")
+
             return header
 
-        # Only if we have no prior header and LLM is available do we try LLM fallback
-        if (not header.assembly_number or not header.part_number) and header_crop is not None and self.llm_service.is_available:
-            logger.info(f"Page {page_number} header missing critical fields and no prior header cached, attempting LLM fallback")
+        # --- First page, no prior context — must use LLM Vision ---
+        if header_crop is not None and self.llm_service.is_available:
+            logger.info(
+                f"Page {page_number}: No prior header and insufficient OCR text — "
+                "using LLM Vision for initial header extraction."
+            )
             try:
                 llm_header = self.llm_service.extract_header(header_crop, header_text, page_number)
                 if llm_header and llm_header.assembly_number:
                     self.last_valid_header = llm_header
                     return llm_header
             except Exception as e:
-                logger.warning(f"Header LLM fallback error: {e}")
+                logger.warning(f"LLM header extraction failed on page {page_number}: {e}")
 
-        if header.assembly_number and header.part_number:
+        if header.assembly_number:
             self.last_valid_header = header
 
         return header
