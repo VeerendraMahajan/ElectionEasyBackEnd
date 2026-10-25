@@ -1,7 +1,8 @@
 import pymupdf
 import numpy as np
 from typing import Dict, Any, Tuple
-from app.core.exceptions import PDFProcessingError
+from app.core.config import settings
+from app.core.exceptions import PDFProcessingError, FileValidationError
 from app.utils.image_utils import render_pdf_page_to_image
 
 
@@ -11,7 +12,13 @@ class PDFService:
     @staticmethod
     def open_pdf(pdf_path: str) -> pymupdf.Document:
         try:
-            return pymupdf.open(pdf_path)
+            doc = pymupdf.open(pdf_path)
+            if doc.is_encrypted or doc.needs_pass:
+                doc.close()
+                raise FileValidationError("PDF document is password-protected or encrypted. Unprotected files required.")
+            return doc
+        except FileValidationError:
+            raise
         except Exception as e:
             raise PDFProcessingError(f"Failed to open PDF document at {pdf_path}: {str(e)}")
 
@@ -22,7 +29,12 @@ class PDFService:
         try:
             page_count = len(doc)
             if page_count == 0:
-                raise PDFProcessingError("PDF document has 0 pages.")
+                raise FileValidationError("PDF document has 0 pages.")
+
+            if page_count > settings.MAX_PDF_PAGES:
+                raise FileValidationError(
+                    f"PDF page count ({page_count}) exceeds maximum allowed limit of {settings.MAX_PDF_PAGES} pages."
+                )
 
             # Check sample page
             sample_page = doc[0]

@@ -1,6 +1,8 @@
 .git
 .gitignore
-.env.example
+.env
+.env.*
+!.env.example
 __pycache__
 *.pyc
 *.pyo
@@ -8,6 +10,16 @@ __pycache__
 .pytest_cache
 *.db
 *.sqlite
+*.sqlite3
+.venv
+venv
+ENV
+env
+*.egg-info
+dist
+build
+.ruff_cache
+.mypy_cache
 uploads/*
 !uploads/.gitkeep
 scratch/*
@@ -16,3 +28,5 @@ sample_data/*
 docs/*
 postman/*
 tests/*
+deploy/*.conf
+

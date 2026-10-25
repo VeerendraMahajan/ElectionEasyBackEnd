@@ -87,8 +87,8 @@ def clean_house_number(raw_house: Optional[str]) -> Optional[str]:
     cleaned = clean_text(raw_house)
     if not cleaned:
         return None
-    # Remove leading label keywords like 'मकान नं0' or 'House No'
-    cleaned = re.sub(r'^(मकान\s*(नं0|संख्या|नं)?[:.\s]*|house\s*(no)?[:.\s]*)', '', cleaned, flags=re.IGNORECASE)
+    # Remove leading label keywords like 'मकान नं0', 'मकान सं.', or 'House No'
+    cleaned = re.sub(r'^(मकान\s*(नं0|संख्या|सं\.?|नं)?[:.\s]*|house\s*(no)?[:.\s]*)', '', cleaned, flags=re.IGNORECASE)
     cleaned = normalize_digits(cleaned)
     cleaned = cleaned.strip()
     return cleaned if cleaned else None

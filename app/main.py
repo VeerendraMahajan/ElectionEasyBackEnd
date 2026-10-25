@@ -14,10 +14,16 @@ import app.models  # Register all models with Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    # Auto-create tables for local/dev/sqlite environments
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION} [env={settings.ENVIRONMENT}]")
+    
+    # Auto-create tables ONLY in non-production environments
+    if not settings.is_production:
+        logger.info("Non-production environment: ensuring tables exist via metadata...")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    else:
+        logger.info("Production mode: schema creation delegated strictly to Alembic migrations.")
+
     yield
     logger.info("Shutting down application and database connection pool...")
     await engine.dispose()
@@ -27,16 +33,23 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Production-grade electoral PDF document extraction platform",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
     lifespan=lifespan,
 )
 
-# CORS Middleware
+# CORS Configuration
+cors_origins = settings.cors_origins_list
+allow_credentials = settings.CORS_ALLOW_CREDENTIALS
+# Safety check: browsers reject wildcard origins with credentials
+if "*" in cors_origins and allow_credentials:
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -76,6 +89,7 @@ async def app_exception_handler(request: Request, exc: AppException):
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     req_id = request_id_ctx.get() or str(uuid.uuid4())
+    # Log raw exception internally, do not leak internal stack trace to client
     logger.error(f"Unhandled internal server error: {exc}", exc_info=True, extra={"request_id": req_id})
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -90,26 +104,56 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Health Checks
+# Health & Readiness Probes
 @app.get("/health", tags=["health"])
 async def health_check():
     """Liveness probe: verifies application process is running."""
-    return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT
+    }
 
 
 @app.get("/ready", tags=["health"])
 async def readiness_check():
-    """Readiness probe: verifies database and core dependencies are responsive."""
+    """Readiness probe: verifies database and core dependencies are responsive without leaking internal error details."""
+    db_ready = False
+    redis_ready = False
+
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        return {"status": "ready", "database": "connected"}
+        db_ready = True
     except Exception as e:
-        logger.error(f"Readiness check failed: {e}")
+        logger.error(f"Database readiness check failed: {e}")
+
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.REDIS_URL, socket_connect_timeout=2)
+        await r.ping()
+        await r.aclose()
+        redis_ready = True
+    except Exception as e:
+        logger.warning(f"Redis readiness check warning: {e}")
+
+    # Serving traffic requires database connectivity
+    if not db_ready:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "database": "disconnected", "error": str(e)},
+            content={
+                "status": "not_ready",
+                "database": "disconnected",
+                "redis": "connected" if redis_ready else "disconnected"
+            },
         )
+
+    return {
+        "status": "ready",
+        "database": "connected",
+        "redis": "connected" if redis_ready else "disconnected"
+    }
 
 
 # Mount API routers

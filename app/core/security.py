@@ -2,7 +2,7 @@ import os
 import re
 import zipfile
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 from app.core.config import settings
 from app.core.exceptions import FileValidationError, UnsupportedFileError
 
@@ -13,11 +13,12 @@ ALLOWED_EXTENSIONS = {".pdf", ".zip"}
 
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename to prevent directory traversal and remove illegal characters."""
-    # Keep only base name
-    clean_name = os.path.basename(filename)
+    # Strip null bytes and directory components
+    clean_name = filename.replace("\x00", "")
+    clean_name = os.path.basename(clean_name)
     # Replace dangerous characters with underscores
     clean_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', clean_name)
-    # Ensure it's not empty
+    # Ensure it is not empty and does not start with hidden dot
     if not clean_name or clean_name.startswith('.'):
         clean_name = f"document_{clean_name.lstrip('.')}"
     return clean_name
@@ -37,7 +38,10 @@ def validate_file_header(file_bytes: bytes) -> str:
 
 
 def validate_file_size(size_bytes: int, is_zip: bool = False) -> None:
-    """Validate uploaded file size against configured limits."""
+    """Validate uploaded file size against configured limits and ensure file is non-empty."""
+    if size_bytes <= 0:
+        raise FileValidationError("Uploaded file is empty (0 bytes).")
+
     max_size = settings.MAX_ZIP_SIZE if is_zip else settings.MAX_FILE_SIZE
     if size_bytes > max_size:
         limit_mb = max_size / (1024 * 1024)
@@ -48,6 +52,7 @@ def safe_extract_zip(zip_path: str, extract_to: str) -> List[str]:
     """
     Safely extract ZIP files with defenses against:
     - Path traversal (ZIP slip)
+    - Symlinks / link attacks
     - ZIP bombs (decompression bombs)
     - Excessive file counts
     
@@ -68,6 +73,10 @@ def safe_extract_zip(zip_path: str, extract_to: str) -> List[str]:
         total_uncompressed_size = 0
 
         for member in infolist:
+            # Check for symlink in external_attr (0o120000 = S_IFLNK)
+            if (member.external_attr >> 16) & 0o170000 == 0o120000:
+                raise FileValidationError(f"Symlinks not permitted in ZIP archive: {member.filename}")
+
             # Check for decompression bomb
             total_uncompressed_size += member.file_size
             if total_uncompressed_size > settings.MAX_ZIP_EXTRACTED_SIZE:
@@ -78,8 +87,13 @@ def safe_extract_zip(zip_path: str, extract_to: str) -> List[str]:
 
             # Check for path traversal (ZIP slip)
             target_path = (extract_to_path / member.filename).resolve()
-            if not str(target_path).startswith(str(extract_to_path)):
-                raise FileValidationError(f"Path traversal detected in archive entry: {member.filename}")
+            try:
+                if not target_path.is_relative_to(extract_to_path):
+                    raise FileValidationError(f"Path traversal detected in archive entry: {member.filename}")
+            except AttributeError:
+                # Python < 3.9 fallback
+                if not str(target_path).startswith(str(extract_to_path) + os.sep):
+                    raise FileValidationError(f"Path traversal detected in archive entry: {member.filename}")
 
             # Ignore directories, skip non-PDFs safely
             if member.is_dir():

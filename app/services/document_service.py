@@ -92,8 +92,27 @@ class DocumentService:
         await self.session.commit()
 
         # 4. Asynchronous Task Dispatch
-        # Launch background task for document processing
-        asyncio.create_task(self._run_extraction_task(job.id, [d.id for d in document_responses], pdf_paths, format_hint=format_hint))
+        # Prioritize Celery worker for heavy background extraction; fallback to asyncio if broker unavailable
+        dispatched_to_celery = False
+        try:
+            from app.workers.document_tasks import process_document_job
+            process_document_job.delay(
+                str(job.id),
+                [str(d.id) for d in document_responses],
+                pdf_paths,
+                format_hint=format_hint,
+            )
+            dispatched_to_celery = True
+            logger.info(f"Dispatched job {job.id} to Celery worker.")
+        except Exception as celery_err:
+            logger.warning(
+                f"Celery dispatch unavailable ({celery_err}). Executing via local asyncio background task."
+            )
+            asyncio.create_task(
+                self._run_extraction_task(
+                    job.id, [d.id for d in document_responses], pdf_paths, format_hint=format_hint
+                )
+            )
 
         return DocumentUploadResponse(
             job_id=job.id,

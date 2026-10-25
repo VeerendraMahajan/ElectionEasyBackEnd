@@ -1,89 +1,128 @@
+name: voterlens
+
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: voterlens_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-voterlens_db}
-    ports:
-      - "5432:5432"
+    # No host ports exposed - accessible only within voterlens_net
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d voterlens_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-voterlens_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - voterlens_net
 
   redis:
     image: redis:7-alpine
-    container_name: voterlens_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host ports exposed - accessible only within voterlens_net
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - voterlens_net
+
+  migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
+      DATABASE_SYNC_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
+    command: alembic upgrade head
+    networks:
+      - voterlens_net
 
   api:
-    build: .
-    container_name: voterlens_api
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/voterlens_db
-      DATABASE_SYNC_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/voterlens_db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
+      DATABASE_SYNC_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+    # Publish strictly on loopback 127.0.0.1 for host Nginx proxy
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     volumes:
-      - ./app:/app/app
-      - ./alembic:/app/alembic
-      - ./uploads:/app/uploads
-      - ./reports:/app/reports
-      - ./sample_data:/app/sample_data
-      - easyocr_models:/root/.EasyOCR
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8001"
+      - uploads_data:/app/uploads
+      - reports_data:/app/reports
+      - easyocr_models:/home/appuser/.EasyOCR
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --proxy-headers --forwarded-allow-ips=*
+    networks:
+      - voterlens_net
 
   worker:
-    build: .
-    container_name: voterlens_worker
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
+    stop_grace_period: 60s
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/voterlens_db
-      DATABASE_SYNC_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/voterlens_db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
+      DATABASE_SYNC_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-voterlens_db}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
-      - ./app:/app/app
-      - ./uploads:/app/uploads
-      - ./reports:/app/reports
-      - ./sample_data:/app/sample_data
-      - easyocr_models:/root/.EasyOCR
+      - uploads_data:/app/uploads
+      - reports_data:/app/reports
+      - easyocr_models:/home/appuser/.EasyOCR
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    networks:
+      - voterlens_net
 
 volumes:
   postgres_data:
+  redis_data:
+  uploads_data:
+  reports_data:
   easyocr_models:
+
+networks:
+  voterlens_net:
+    driver: bridge
