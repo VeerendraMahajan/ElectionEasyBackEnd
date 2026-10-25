@@ -31,6 +31,11 @@ class VoterExtraction(BaseModel):
     validation_status: str = Field(default="VALID")
     validation_notes: List[str] = Field(default_factory=list)
     watermark: Optional[str] = Field(None, description="Watermark or status stamp e.g. 'DELETED', 'MODIFIED', 'DUPLICATE'")
+    booth_number: Optional[str] = Field(None, description="Polling Station / Booth Number")
+    booth_name_hi: Optional[str] = Field(None, description="Polling Station / Booth Name in Hindi")
+    booth_name_en: Optional[str] = Field(None, description="Polling Station / Booth Name in English transliteration")
+    booth_address_hi: Optional[str] = Field(None, description="Polling Station / Booth Address in Hindi")
+    booth_address_en: Optional[str] = Field(None, description="Polling Station / Booth Address in English transliteration")
 
 
 class LocationInfo(BaseModel):
@@ -72,6 +77,12 @@ class VoterInfo(BaseModel):
     photo_available: Optional[bool] = False
     watermark: Optional[str] = None
 
+    booth_number: Optional[str] = None
+    booth_name_hi: Optional[str] = None
+    booth_name_en: Optional[str] = None
+    booth_address_hi: Optional[str] = None
+    booth_address_en: Optional[str] = None
+
 
 class SourceInfo(BaseModel):
     document_id: Optional[uuid.UUID] = None
@@ -108,6 +119,11 @@ class PersonRecordUpdate(BaseModel):
     age: Optional[int] = None
     validation_status: Optional[str] = "CORRECTED"
     watermark: Optional[str] = None
+    booth_number: Optional[str] = None
+    booth_name_hi: Optional[str] = None
+    booth_name_en: Optional[str] = None
+    booth_address_hi: Optional[str] = None
+    booth_address_en: Optional[str] = None
     reviewer_notes: Optional[str] = None
 
 

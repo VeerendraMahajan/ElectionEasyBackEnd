@@ -52,6 +52,13 @@ class PersonRecord(Base):
     validation_status: Mapped[str] = mapped_column(String(50), default="VALID", index=True)
     watermark: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Booth / Polling Station Details for every voter
+    booth_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    booth_name_hi: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    booth_name_en: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    booth_address_hi: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    booth_address_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Human review audit trail
     correction_history: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
@@ -76,4 +83,5 @@ class PersonRecord(Base):
         Index("ix_person_doc_page_serial", "document_id", "page_id", "serial_number"),
         Index("ix_person_id_number", "id_number"),
         Index("ix_person_validation_conf", "validation_status", "overall_confidence"),
+        Index("ix_person_booth_number", "booth_number"),
     )

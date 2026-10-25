@@ -81,13 +81,17 @@ class HeaderExtractionService:
         section_name_en = TransliterationService.hindi_to_english(section_name_hi) if section_name_hi else None
 
         # 4. Booth / Polling Station Extraction
-        # Pattern: मतदान (?:केन्द्र|स्थल) (?:संख्या\s*और\s*नाम)?[^\d:]*[:\s]*(\d+)[-\s]+([^\n\r]+)
         booth_num = None
         booth_name_hi = None
         booth_match = re.search(
             r'मतदान\s*(?:केन्द्र|केंद्र)[^\d:]*[:\s]*(\d+)[-\s]*([^\d:]+?)(?=(?:\d+\s*-|सम्बद्ध|मतदान\s*स्थल|$))',
             norm_text
         )
+        if not booth_match:
+            booth_match = re.search(
+                r'मतदान\s*(?:स्थल\s*की\s*संख्या\s*और\s*नाम|केन्द्र|केंद्र|स्थल|केȾ)[\s\S]*?(?:^|\n|\s)\s*(\d+)\s*[-:]?\s*([^\n\r]+)',
+                norm_text
+            )
         if not booth_match:
             booth_match = re.search(
                 r'मतदान\s*(?:केन्द्र|केंद्र|स्थल|केȾ)[^\d:]*[:\s]*(\d+)[-\s]+([^\n\r]+)',
@@ -102,12 +106,14 @@ class HeaderExtractionService:
         # 5. Booth Address Extraction
         booth_addr_hi = booth_name_hi
         booth_addr_en = booth_name_en
-        addr_match = re.search(r'मतदान\s*स्थल[^\d:]*[:\s]*([^\n\r]+?)(?=(?:\d+\s*-|वार्ड\s*संख्या|$))', norm_text)
+        addr_match = re.search(r'मतदान\s*स्थल\s*का\s*पता[\s\S]*?(?:^|\n|\s)\s*([^\n\r]+)', norm_text)
         if not addr_match:
-            addr_match = re.search(r'मतदान\s*स्थल\s*का\s*पता[^\n\r:]*[:\s]*([^\n\r]+)', norm_text)
+            addr_match = re.search(r'मतदान\s*स्थल[^\d:]*[:\s]*([^\n\r]+?)(?=(?:\d+\s*-|वार्ड\s*संख्या|$))', norm_text)
         if addr_match:
-            booth_addr_hi = clean_text(addr_match.group(1))
-            booth_addr_en = TransliterationService.hindi_to_english(booth_addr_hi)
+            clean_addr = clean_text(addr_match.group(1))
+            if clean_addr and "विवरण" not in clean_addr and "निर्वाचक" not in clean_addr:
+                booth_addr_hi = clean_addr
+                booth_addr_en = TransliterationService.hindi_to_english(booth_addr_hi)
 
         # Calculate confidence
         confidence = 0.50
@@ -145,7 +151,7 @@ class HeaderExtractionService:
         Extract header with the following priority strategy:
         1. Deterministic regex from OCR/digital text (fast, free).
         2. If assembly+part found deterministically, cache and return.
-        3. If prior header cached (same document), inherit assembly/part.
+        3. If prior header cached (same document), inherit assembly/part/booth.
            Then try LLM on the crop to update section/booth changes per page.
         4. First page with no cached context — LLM Vision required.
         """
@@ -153,6 +159,15 @@ class HeaderExtractionService:
 
         # Fast path: fully resolved deterministically
         if header.assembly_number and header.part_number:
+            # Retain cached hierarchy and booth details if missing on this page
+            if self.last_valid_header:
+                header.assembly_name_hi = header.assembly_name_hi or self.last_valid_header.assembly_name_hi
+                header.assembly_name_en = header.assembly_name_en or self.last_valid_header.assembly_name_en
+                header.booth_number = header.booth_number or self.last_valid_header.booth_number
+                header.booth_name_hi = header.booth_name_hi or self.last_valid_header.booth_name_hi
+                header.booth_name_en = header.booth_name_en or self.last_valid_header.booth_name_en
+                header.booth_address_hi = header.booth_address_hi or self.last_valid_header.booth_address_hi
+                header.booth_address_en = header.booth_address_en or self.last_valid_header.booth_address_en
             self.last_valid_header = header
             return header
 
@@ -189,6 +204,7 @@ class HeaderExtractionService:
                 except Exception as e:
                     logger.debug(f"LLM section-update on page {page_number} failed: {e}")
 
+            self.last_valid_header = header
             return header
 
         # --- First page, no prior context — must use LLM Vision ---

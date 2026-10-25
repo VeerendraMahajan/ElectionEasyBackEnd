@@ -53,6 +53,11 @@ class RecordRepository:
                 overall_confidence=v.overall_confidence,
                 validation_status=v.validation_status,
                 watermark=v.watermark,
+                booth_number=v.booth_number,
+                booth_name_hi=v.booth_name_hi,
+                booth_name_en=v.booth_name_en,
+                booth_address_hi=v.booth_address_hi,
+                booth_address_en=v.booth_address_en,
             )
             records.append(record)
             self.session.add(record)
@@ -65,6 +70,9 @@ class RecordRepository:
                 ("house_number", v.house_number, v.house_number, v.house_number),
                 ("gender", v.gender_hi, v.gender_hi, v.gender_en),
                 ("age", str(v.age) if v.age is not None else None, str(v.age) if v.age is not None else None, str(v.age) if v.age is not None else None),
+                ("booth_number", v.booth_number, v.booth_number, v.booth_number),
+                ("booth_name", v.booth_name_hi, v.booth_name_hi, v.booth_name_en),
+                ("booth_address", v.booth_address_hi, v.booth_address_hi, v.booth_address_en),
             ]
             for fname, raw_val, norm_hi, norm_en in field_mappings:
                 if raw_val is not None:
@@ -136,7 +144,9 @@ class RecordRepository:
         if part_number:
             filters.append(DocumentPage.part_number == part_number)
         if booth_number:
-            filters.append(DocumentPage.booth_number == booth_number)
+            filters.append(
+                (PersonRecord.booth_number == booth_number) | (DocumentPage.booth_number == booth_number)
+            )
         if gender:
             filters.append(
                 (PersonRecord.gender_en.ilike(f"%{gender}%")) | (PersonRecord.gender_hi == gender)
@@ -203,6 +213,11 @@ class RecordRepository:
                 "age": record.age,
                 "validation_status": record.validation_status,
                 "watermark": record.watermark,
+                "booth_number": record.booth_number,
+                "booth_name_hi": record.booth_name_hi,
+                "booth_name_en": record.booth_name_en,
+                "booth_address_hi": record.booth_address_hi,
+                "booth_address_en": record.booth_address_en,
             },
             "notes": update_data.reviewer_notes
         }
@@ -212,7 +227,14 @@ class RecordRepository:
         record.correction_history = current_history
 
         # Apply updates
-        for field in ["serial_number", "house_number", "name_hi", "name_en", "relation_type", "relation_name_hi", "relation_name_en", "id_number", "gender_hi", "gender_en", "age", "validation_status", "watermark"]:
+        for field in [
+            "serial_number", "house_number", "name_hi", "name_en",
+            "relation_type", "relation_name_hi", "relation_name_en",
+            "id_number", "gender_hi", "gender_en", "age",
+            "validation_status", "watermark",
+            "booth_number", "booth_name_hi", "booth_name_en",
+            "booth_address_hi", "booth_address_en"
+        ]:
             val = getattr(update_data, field)
             if val is not None:
                 setattr(record, field, val)

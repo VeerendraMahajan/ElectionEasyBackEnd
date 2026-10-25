@@ -99,6 +99,8 @@ async def process_pdf(pdf_path: str, session: AsyncSession, max_pages: int = 5) 
         print(f"    ID      : {r.id_number}")
         print(f"    Gender  : {r.gender_hi} ({r.gender_en})")
         print(f"    Age     : {r.age}")
+        print(f"    Booth   : {r.booth_number} - {r.booth_name_hi} ({r.booth_name_en})")
+        print(f"    Address : {r.booth_address_hi} ({r.booth_address_en})")
         print(f"    Status  : {r.validation_status} (Confidence: {r.overall_confidence:.2f})")
 
     report = {

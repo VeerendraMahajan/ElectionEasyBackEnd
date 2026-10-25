@@ -82,3 +82,59 @@ class PageAnalysisService:
         images = page.get_images()
         # Assembly page: scanned image, no extractable text, not card or table layout
         return is_unknown and len(page_text) < 50 and len(images) > 0
+
+    def extract_cover_page_deterministic(self, page_img: np.ndarray, page_num: int = 1) -> Dict[str, Any]:
+        """
+        Deterministic OCR-based extraction of cover / assembly details page (Page 1).
+        Extracts assembly, part, booth number, booth name, and booth address directly from OCR.
+        """
+        import re
+        from app.utils.text_utils import normalize_digits, clean_text
+        from app.services.transliteration_service import TransliterationService
+
+        ocr_results = self.ocr_service.recognize(page_img, page_number=page_num)
+        lines = [r["text"].strip() for r in ocr_results if r.get("text")]
+        raw_text = "\n".join(lines)
+        norm_text = normalize_digits(raw_text)
+
+        data = {"page_number": page_num}
+
+        # 1. Assembly number & name
+        asm_match = re.search(r'(?:विधानसभा.*?|विधान\s*सभा)[^\d:\n]*[:\s]*(\d+)\s*[-:]\s*([^\(\n\r]+)', norm_text)
+        if asm_match:
+            data["assembly_number"] = asm_match.group(1).strip()
+            data["assembly_name_hi"] = clean_text(asm_match.group(2))
+            data["assembly_name_en"] = TransliterationService.hindi_to_english(data["assembly_name_hi"])
+
+        # 2. Part number
+        part_match = re.search(r'भाग\s*(?:संख्या|सख्या|नं)?[^\d:\n]*[:\s]*(\d+)', norm_text)
+        if part_match:
+            data["part_number"] = part_match.group(1).strip()
+
+        # 3. Booth number and name
+        booth_match = re.search(
+            r'मतदान\s*स्थल\s*की\s*संख्या\s*और\s*नाम[\s\S]*?(?:^|\n)\s*(\d+)\s*(?:-\s*)?([^\n\r]+)',
+            norm_text
+        )
+        if not booth_match:
+            booth_match = re.search(r'मतदान\s*(?:स्थल|केन्द्र|केंद्र)[^\d:\n]*[:\s]*(\d+)\s*[-:]?\s*([^\n\r]+)', norm_text)
+        if booth_match:
+            data["booth_number"] = booth_match.group(1).strip()
+            data["booth_name_hi"] = clean_text(booth_match.group(2))
+            data["booth_name_en"] = TransliterationService.hindi_to_english(data["booth_name_hi"])
+
+        # 4. Booth address
+        addr_match = re.search(
+            r'मतदान\s*स्थल\s*का\s*पता[\s\S]*?(?:^|\n)\s*([^\n\r]+)',
+            norm_text
+        )
+        if addr_match:
+            b_addr = clean_text(addr_match.group(1))
+            if b_addr and "निर्वाचक" not in b_addr and "विवरण" not in b_addr:
+                data["booth_address_hi"] = b_addr
+                data["booth_address_en"] = TransliterationService.hindi_to_english(b_addr)
+        if not data.get("booth_address_hi") and data.get("booth_name_hi"):
+            data["booth_address_hi"] = data["booth_name_hi"]
+            data["booth_address_en"] = data.get("booth_name_en")
+
+        return data

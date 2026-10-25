@@ -4,6 +4,8 @@ import pymupdf
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.pdf_service import PDFService
 from app.services.page_analysis_service import PageAnalysisService
+from app.services.layout_service import LayoutService
+from app.services.transliteration_service import TransliterationService
 from app.services.duplicate_service import DuplicateService
 from app.repositories.page_repository import PageRepository
 from app.repositories.record_repository import RecordRepository
@@ -60,6 +62,45 @@ class ExtractionService:
         logger.info(f"Starting extraction for document {document_id} ({start_page} to {end_p} of {total_pages} pages)")
 
         try:
+            # If start_page > 1 and no header cached yet, pre-extract cover page booth metadata if available
+            if start_page > 1 and not self.page_analysis.header_service.last_valid_header and total_pages > 0:
+                try:
+                    p0 = doc[0]
+                    l0 = LayoutService.detect_layout(p0, None, page_number=1)
+                    if self.page_analysis.is_assembly_summary_page(p0, l0):
+                        logger.info("Pre-extracting document hierarchy and booth details from cover page 1...")
+                        p0_img = PDFService.render_page(doc, 0, dpi=200)
+                        cov_data = None
+                        if self.llm_service.is_available:
+                            try:
+                                cov_data = self.llm_service.extract_assembly_page(p0_img, 1)
+                            except Exception as e:
+                                logger.debug(f"LLM page 1 extraction: {e}")
+                        if not cov_data or not cov_data.get("booth_number"):
+                            cov_data = self.page_analysis.extract_cover_page_deterministic(p0_img, 1)
+                        if cov_data:
+                            b_num = str(cov_data.get("booth_number")) if cov_data.get("booth_number") is not None else None
+                            b_name_hi = cov_data.get("booth_name_hi")
+                            b_name_en = cov_data.get("booth_name_en") or (TransliterationService.hindi_to_english(b_name_hi) if b_name_hi else None)
+                            b_addr_hi = cov_data.get("booth_address_hi")
+                            b_addr_en = cov_data.get("booth_address_en") or (TransliterationService.hindi_to_english(b_addr_hi) if b_addr_hi else None)
+                            from app.schemas.page import PageHeaderExtraction
+                            self.page_analysis.header_service.last_valid_header = PageHeaderExtraction(
+                                assembly_number=str(cov_data.get("assembly_number")) if cov_data.get("assembly_number") else None,
+                                assembly_name_hi=cov_data.get("assembly_name_hi"),
+                                assembly_name_en=TransliterationService.hindi_to_english(cov_data.get("assembly_name_hi")) if cov_data.get("assembly_name_hi") else None,
+                                part_number=str(cov_data.get("part_number")) if cov_data.get("part_number") else None,
+                                booth_number=b_num,
+                                booth_name_hi=b_name_hi,
+                                booth_name_en=b_name_en,
+                                booth_address_hi=b_addr_hi,
+                                booth_address_en=b_addr_en,
+                                page_number=1,
+                                confidence=0.97
+                            )
+                except Exception as pre_err:
+                    logger.debug(f"Pre-extraction from page 1 skipped: {pre_err}")
+
             for p_idx in range(start_page - 1, end_p):
                 page_num = p_idx + 1
 
@@ -92,28 +133,57 @@ class ExtractionService:
                         if self.page_analysis.is_assembly_summary_page(page, layout_info):
                             logger.info(
                                 f"Page {page_num}: Assembly summary/cover page detected — "
-                                "extracting metadata via LLM (no voter records on this page)."
+                                "extracting metadata via LLM/OCR (no voter records on this page)."
                             )
-                            # Extract assembly metadata and store it in the page header
-                            assembly_data = self.llm_service.extract_assembly_page(
-                                page_img, page_num
-                            )
+                            # Extract assembly and booth metadata via LLM, with fallback to deterministic OCR
+                            assembly_data = None
+                            if self.llm_service.is_available:
+                                try:
+                                    assembly_data = self.llm_service.extract_assembly_page(
+                                        page_img, page_num
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"LLM assembly page extraction failed: {e}")
+
+                            if not assembly_data or not assembly_data.get("booth_number"):
+                                deterministic_data = self.page_analysis.extract_cover_page_deterministic(
+                                    page_img, page_num
+                                )
+                                if assembly_data:
+                                    for k, v in deterministic_data.items():
+                                        if not assembly_data.get(k) and v:
+                                            assembly_data[k] = v
+                                else:
+                                    assembly_data = deterministic_data
+
                             if assembly_data:
+                                booth_num = str(assembly_data.get("booth_number")) if assembly_data.get("booth_number") is not None else None
+                                booth_name_hi = assembly_data.get("booth_name_hi")
+                                booth_name_en = assembly_data.get("booth_name_en") or (
+                                    TransliterationService.hindi_to_english(booth_name_hi) if booth_name_hi else None
+                                )
+                                booth_address_hi = assembly_data.get("booth_address_hi")
+                                booth_address_en = assembly_data.get("booth_address_en") or (
+                                    TransliterationService.hindi_to_english(booth_address_hi) if booth_address_hi else None
+                                )
+
                                 # Build a PageHeaderExtraction from the assembly data
                                 from app.schemas.page import PageHeaderExtraction
                                 enriched_header = PageHeaderExtraction(
-                                    assembly_number=assembly_data.get("assembly_number") or header_data.assembly_number,
+                                    assembly_number=str(assembly_data.get("assembly_number")) if assembly_data.get("assembly_number") else header_data.assembly_number,
                                     assembly_name_hi=assembly_data.get("assembly_name_hi") or header_data.assembly_name_hi,
-                                    assembly_name_en=None,
-                                    section_number=None,
-                                    section_name_hi=None,
-                                    section_name_en=None,
-                                    part_number=assembly_data.get("part_number") or header_data.part_number,
-                                    booth_number=assembly_data.get("booth_number"),
-                                    booth_name_hi=assembly_data.get("booth_name_hi"),
-                                    booth_name_en=None,
-                                    booth_address_hi=assembly_data.get("booth_address_hi"),
-                                    booth_address_en=None,
+                                    assembly_name_en=assembly_data.get("assembly_name_en") or (
+                                        TransliterationService.hindi_to_english(assembly_data.get("assembly_name_hi")) if assembly_data.get("assembly_name_hi") else header_data.assembly_name_en
+                                    ),
+                                    section_number=str(assembly_data.get("section_number")) if assembly_data.get("section_number") else None,
+                                    section_name_hi=assembly_data.get("section_name_hi"),
+                                    section_name_en=TransliterationService.hindi_to_english(assembly_data.get("section_name_hi")) if assembly_data.get("section_name_hi") else None,
+                                    part_number=str(assembly_data.get("part_number")) if assembly_data.get("part_number") else header_data.part_number,
+                                    booth_number=booth_num,
+                                    booth_name_hi=booth_name_hi,
+                                    booth_name_en=booth_name_en,
+                                    booth_address_hi=booth_address_hi,
+                                    booth_address_en=booth_address_en,
                                     page_number=page_num,
                                     confidence=0.97,
                                 )
@@ -144,6 +214,14 @@ class ExtractionService:
                             extractor = self.generic_extractor
 
                         voters: List[VoterExtraction] = extractor.extract_page(page, page_img, page_num, layout_info)
+
+                        # Attach booth details to every individual voter record
+                        for v in voters:
+                            v.booth_number = v.booth_number or header_data.booth_number
+                            v.booth_name_hi = v.booth_name_hi or header_data.booth_name_hi
+                            v.booth_name_en = v.booth_name_en or header_data.booth_name_en
+                            v.booth_address_hi = v.booth_address_hi or header_data.booth_address_hi
+                            v.booth_address_en = v.booth_address_en or header_data.booth_address_en
 
                         # 4. Duplicate Flagging & Validation
                         voters_dicts = [v.model_dump() for v in voters]
