@@ -24,7 +24,7 @@
 - **Solution**:
   1. Verify PostgreSQL container is healthy: `docker ps`.
   2. Ensure `.env` specifies: `DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/voterlens_db`.
-  3. Check readiness probe: `curl http://localhost:8000/ready`.
+  3. Check readiness probe: `curl http://localhost:8001/ready`.
 
 ---
 

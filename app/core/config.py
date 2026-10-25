@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     APP_NAME: str = "VoterLens"
     APP_VERSION: str = "1.0.0"
+    PORT: int = 8001
 
     # Database Settings
     DATABASE_URL: str = Field(

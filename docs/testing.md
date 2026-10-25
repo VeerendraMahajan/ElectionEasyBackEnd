@@ -6,15 +6,15 @@ You can verify the running VoterLens system using HTTP requests or curl:
 ### Health & Readiness Checks
 ```bash
 # Check service liveness
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 
 # Check database & service readiness
-curl http://localhost:8000/ready
+curl http://localhost:8001/ready
 ```
 
 ### Document Upload
 ```bash
-curl -X POST "http://localhost:8000/api/v1/documents/upload" \
+curl -X POST "http://localhost:8001/api/v1/documents/upload" \
   -H "accept: application/json" \
   -F "file=@sample_data/PAN_076_7_1.pdf"
 ```
@@ -22,17 +22,17 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload" \
 ### Query Records in Ascending Serial Order
 ```bash
 # Default query returns records sorted by serial number ascending (1, 2, 3...)
-curl "http://localhost:8000/api/v1/records?limit=10"
+curl "http://localhost:8001/api/v1/records?limit=10"
 
 # Specific document records
-curl "http://localhost:8000/api/v1/documents/{document_id}/records"
+curl "http://localhost:8001/api/v1/documents/{document_id}/records"
 ```
 
 ---
 
 ## 2. Interactive API Testing (Swagger & Postman)
-- **Swagger UI**: Visit [http://localhost:8000/docs](http://localhost:8000/docs) in your browser.
-- **ReDoc**: Visit [http://localhost:8000/redoc](http://localhost:8000/redoc).
+- **Swagger UI**: Visit [http://localhost:8001/docs](http://localhost:8001/docs) in your browser.
+- **ReDoc**: Visit [http://localhost:8001/redoc](http://localhost:8001/redoc).
 - **Postman**: Pre-configured collection files are available in:
   - Collection: [`postman/VoterLens.postman_collection.json`](../postman/VoterLens.postman_collection.json)
   - Environment: [`postman/VoterLens.postman_environment.json`](../postman/VoterLens.postman_environment.json)

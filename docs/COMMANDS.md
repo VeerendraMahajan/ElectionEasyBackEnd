@@ -142,19 +142,19 @@ Verify that the FastAPI server and database are healthy:
 
 ```powershell
 # PowerShell:
-Invoke-RestMethod -Uri http://localhost:8000/health
-Invoke-RestMethod -Uri http://localhost:8000/ready
+Invoke-RestMethod -Uri http://localhost:8001/health
+Invoke-RestMethod -Uri http://localhost:8001/ready
 ```
 
 ```bash
 # Linux / Git Bash / macOS:
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
+curl http://localhost:8001/health
+curl http://localhost:8001/ready
 ```
 
 - **Interactive API Documentation:**
-  - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
-  - ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+  - Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
+  - ReDoc: [http://localhost:8001/redoc](http://localhost:8001/redoc)
 
 ### B. Upload Electoral Documents
 
@@ -163,11 +163,11 @@ Automatically detects whether the PDF is Card Format (`sample_Data.pdf`), Digita
 
 ```bash
 # Upload via curl:
-curl -X POST "http://localhost:8000/api/v1/documents/upload" \
+curl -X POST "http://localhost:8001/api/v1/documents/upload" \
   -F "file=@sample_data/sample_Data.pdf"
 
 # Upload Panchayat tabular list:
-curl -X POST "http://localhost:8000/api/v1/documents/upload" \
+curl -X POST "http://localhost:8001/api/v1/documents/upload" \
   -F "file=@sample_data/sample_data_1.pdf"
 ```
 
@@ -175,7 +175,7 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload" \
 # PowerShell upload:
 $filePath = "sample_data\sample_data_1.pdf"
 $form = @{ file = Get-Item -Path $filePath }
-Invoke-RestMethod -Uri "http://localhost:8000/api/v1/documents/upload" -Method Post -Form $form
+Invoke-RestMethod -Uri "http://localhost:8001/api/v1/documents/upload" -Method Post -Form $form
 ```
 
 #### 2. Dedicated Tabular Endpoint (`POST /api/v1/documents/upload-tabular`)
@@ -183,7 +183,7 @@ Dedicated endpoint specifically for uploading 2-column tabular electoral rolls (
 
 ```bash
 # Upload via dedicated tabular endpoint:
-curl -X POST "http://localhost:8000/api/v1/documents/upload-tabular" \
+curl -X POST "http://localhost:8001/api/v1/documents/upload-tabular" \
   -F "file=@sample_data/sample_data_1.pdf"
 ```
 
@@ -191,7 +191,7 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload-tabular" \
 # PowerShell:
 $filePath = "sample_data\sample_data_1.pdf"
 $form = @{ file = Get-Item -Path $filePath }
-Invoke-RestMethod -Uri "http://localhost:8000/api/v1/documents/upload-tabular" -Method Post -Form $form
+Invoke-RestMethod -Uri "http://localhost:8001/api/v1/documents/upload-tabular" -Method Post -Form $form
 ```
 
 ### C. Query Extracted Records
@@ -199,12 +199,12 @@ Retrieve voter records sorted by serial number in ascending order:
 
 ```powershell
 # Get first 50 records sorted by serial number (ascending 1, 2, 3...):
-Invoke-RestMethod -Uri "http://localhost:8000/api/v1/records?sort_by=serial_number&sort_order=asc&skip=0&limit=50"
+Invoke-RestMethod -Uri "http://localhost:8001/api/v1/records?sort_by=serial_number&sort_order=asc&skip=0&limit=50"
 ```
 
 ```bash
 # Curl:
-curl "http://localhost:8000/api/v1/records?sort_by=serial_number&sort_order=asc&skip=0&limit=50"
+curl "http://localhost:8001/api/v1/records?sort_by=serial_number&sort_order=asc&skip=0&limit=50"
 ```
 
 ### C. Search Records with Filters
@@ -212,13 +212,13 @@ Filter records by gender, age range, EPIC/ID number, or review status:
 
 ```bash
 # Filter by EPIC / Voter ID:
-curl "http://localhost:8000/api/v1/records?id_number=WGX1774694"
+curl "http://localhost:8001/api/v1/records?id_number=WGX1774694"
 
 # Filter by Gender and Age Range:
-curl "http://localhost:8000/api/v1/records?gender=Female&min_age=18&max_age=40"
+curl "http://localhost:8001/api/v1/records?gender=Female&min_age=18&max_age=40"
 
 # Get records flagged for human review:
-curl "http://localhost:8000/api/v1/records?validation_status=REVIEW_REQUIRED"
+curl "http://localhost:8001/api/v1/records?validation_status=REVIEW_REQUIRED"
 ```
 
 ### D. Process Electoral PDF via CLI Script

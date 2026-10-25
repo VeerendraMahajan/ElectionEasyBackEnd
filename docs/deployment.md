@@ -8,7 +8,7 @@ docker compose up -d
 ```
 
 ### Managed Services:
-1. **`api` (`voterlens_api`)**: FastAPI application on port `8000`. Runs database migrations automatically on startup.
+1. **`api` (`voterlens_api`)**: FastAPI application on port `8001`. Runs database migrations automatically on startup.
 2. **`worker` (`voterlens_worker`)**: Celery worker consuming document processing tasks from Redis.
 3. **`postgres` (`voterlens_postgres`)**: PostgreSQL 15 database on port `5432` with persistent volume `postgres_data`.
 4. **`redis` (`voterlens_redis`)**: Redis 7 message broker and cache on port `6379`.
@@ -51,9 +51,9 @@ docker ps
 ---
 
 ## 3. Health Checks
-- **Liveness Probe**: `GET http://localhost:8000/health`
+- **Liveness Probe**: `GET http://localhost:8001/health`
   Returns `{"status": "ok", "app": "VoterLens", "version": "1.0.0"}` when the process is healthy.
-- **Readiness Probe**: `GET http://localhost:8000/ready`
+- **Readiness Probe**: `GET http://localhost:8001/ready`
   Executes `SELECT 1` on PostgreSQL and returns `200 OK` when ready to serve traffic.
 
 ---

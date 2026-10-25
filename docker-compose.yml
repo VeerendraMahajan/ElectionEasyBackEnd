@@ -47,7 +47,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
@@ -57,7 +57,7 @@ services:
       - easyocr_models:/root/.EasyOCR
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             uvicorn app.main:app --host 0.0.0.0 --port 8001"
 
   worker:
     build: .

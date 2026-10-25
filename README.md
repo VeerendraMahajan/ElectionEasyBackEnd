@@ -52,7 +52,7 @@ Built with **FastAPI**, **PostgreSQL**, **SQLAlchemy 2.x**, **Alembic**, **OpenC
 ## 3. Docker Container Management & Restart Commands
 
 The entire platform runs in Docker Compose across 4 managed containers:
-- `voterlens_api`: FastAPI web application on port `8000`.
+- `voterlens_api`: FastAPI web application on port `8001`.
 - `voterlens_worker`: Celery background worker for document extraction.
 - `voterlens_postgres`: PostgreSQL 15 database on port `5432`.
 - `voterlens_redis`: Redis 7 message broker and cache on port `6379`.
@@ -86,8 +86,8 @@ docker ps
 ## 4. API Endpoints & Ascending Order Retrieval
 
 Interactive documentation is available at:
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **Swagger UI**: [http://localhost:8001/docs](http://localhost:8001/docs)
+- **ReDoc**: [http://localhost:8001/redoc](http://localhost:8001/redoc)
 - **Postman Collection**: [`postman/VoterLens.postman_collection.json`](./postman/VoterLens.postman_collection.json) & [Environment](./postman/VoterLens.postman_environment.json)
 
 ### Querying Records in Ascending Order:
@@ -95,13 +95,13 @@ By default, all record search and document endpoints return voter records sorted
 
 ```bash
 # Search records (defaults to sort_by=serial_number&sort_order=asc)
-curl "http://localhost:8000/api/v1/records"
+curl "http://localhost:8001/api/v1/records"
 
 # Document records (defaults to sort_by=serial_number&sort_order=asc)
-curl "http://localhost:8000/api/v1/documents/{document_id}/records"
+curl "http://localhost:8001/api/v1/documents/{document_id}/records"
 
 # Custom sort order if needed
-curl "http://localhost:8000/api/v1/records?sort_by=serial_number&sort_order=desc"
+curl "http://localhost:8001/api/v1/records?sort_by=serial_number&sort_order=desc"
 ```
 
 ---
